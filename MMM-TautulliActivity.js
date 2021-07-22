@@ -10,7 +10,7 @@ Module.register('MMM-TautulliActivity', {
 	defaults: {
 		host: '',
 		apiKey: '',
-		updateFrequency: 2,
+		updateFrequency: 2  * 60 * 1000,
 		hideOnNoActivity: false,
 		animationSpeed: 500,
 		stateIcons: {
@@ -20,18 +20,39 @@ Module.register('MMM-TautulliActivity', {
 		},
 	},
 	activityData: null,
-
 	getStyles: function() {
 		return [
 			'MMM-TautulliActivity.css',
 		]
 	},
 
+	countProgress: function(wrapper){
+		var offset = wrapper.getElementsByClassName('offset');
+		
+		for (var i = 0; i < offset.length; i++) {
+			var activity = offset[i].closest('.activity-row');
+			var duration = this.convertToMS(activity.querySelector('.details > .wholeDuration').innerHTML);
+			var newOffset = this.convertToMS(offset[i].innerHTML)
+
+			var shouldCount = duration - newOffset > 1500;
+
+			console.log(shouldCount);
+			console.log(activity);
+			if(activity.classList.contains("playing")){
+				var newOffset = this.convertToMS(offset[i].innerHTML);
+				offset[i].innerHTML =  shouldCount ? `${this.convertFromMS(+newOffset + 1000)}` : `-`;
+			}
+
+		}
+		console.log(newOffset);
+
+	},
+
 	start: function() {
 		Log.info(`Starting module: ${this.name}`);
 
 		this.config.host = this.config.host.trim().replace(/\/$/, '')
-		this.config.updateFrequency = this.config.updateFrequency * 60 * 1000;
+		this.config.updateFrequency = this.config.updateFrequency;
 
 		this.sendSocketNotification('INIT', this.config);
 	},
@@ -42,25 +63,44 @@ Module.register('MMM-TautulliActivity', {
 
 		if (! this.activityData) {
 			wrapper.innerHTML = '<span class="loading dimmed">loading&hellip;</span>';
+			clearInterval(this.interval);
 		} else if (typeof this.activityData === 'string') {
 			wrapper.innerHTML = `<span class="error">${this.activityData}</span>`;
+			clearInterval(this.interval);
 		} else if (! this.activityData.sessions.length) {
 			if (this.config.hideOnNoActivity && ! this.hidden) {
 				this.hide();
 			}
 			wrapper.innerHTML = '<span class="no-activity dimmed">nothing is currently playing</span>';
+			clearInterval(this.interval);
 		} else {
 			for (const row of this.activityData.sessions) {
+				if(row.media_type == "movie"){
+					var additionalInfo = `${row.year}`;
+				}else{
+					var season = (row.parent_media_index);
+					var episode = (row.media_index);
+
+					var additionalInfo = `S${season.padStart(2,"0")}E${episode.padStart(2,"0")}`;
+				}
+
 				wrapper.innerHTML += `
 					<div class="activity-row ${row.state}" data-user-id="${row.user_id}">
 						<div class="activity">
-							<i class="state-icon bright ${this.config.stateIcons[row.state || 'far circle']}"></i> <span class="user-name bright">${row.friendly_name}</span> <span class="title no-wrap">${row.full_title}</span> <span class="title-year dimmed">(${row.year})</span>
+							<i class="state-icon bright ${this.config.stateIcons[row.state || 'far circle']}"></i> <span class="user-name bright">${row.friendly_name}</span>
+							<span class="title no-wrap">${row.full_title}</span>
+							<span class="title-year dimmed">
+								(${additionalInfo})</span>
 						</div>
 						<div class="details xsmall">
-							<span class="duration">${this.convertMS(row.view_offset)} / -${this.convertMS(row.duration - row.view_offset)}</span> <span class="quality">${row.quality_profile}</span> <span class="transcode">${row.transcode_decision}</span>
+							<span class="offset duration">${this.convertFromMS(row.view_offset)}</span><span class="seperator duration"> / </span><span class="duration wholeDuration">${this.convertFromMS(row.duration)}</span> <span class="quality">${row.quality_profile}</span> <span class="transcode">${row.transcode_decision}</span>
 						</div>
 					</div>`;
 			}
+			clearInterval(this.interval);
+			
+			this.interval = setInterval(()=> { this.countProgress(wrapper) }, 1000);
+			setTimeout(function(){clearInterval(this.interval);}, 10000);
 			if (this.hidden) {
 				this.show()
 			}
@@ -70,13 +110,14 @@ Module.register('MMM-TautulliActivity', {
 	},
 
 	socketNotificationReceived: function(notification, payload) {
-		if (notification == 'SET_DATA') {
+		if (notification == 'SET_DATA') 
+		{
 			this.activityData = payload;
 			this.updateDom(this.config.animationSpeed);
 		}
 	},
 
-	convertMS: function(milliseconds) {
+	convertFromMS: function(milliseconds) {
 		var seconds = Math.floor((milliseconds / 1000) % 60);
 		var minutes = Math.floor((milliseconds / (1000 * 60)) % 60);
 		var hours = Math.floor((milliseconds / (1000 * 60 * 60)) % 60);
@@ -87,4 +128,17 @@ Module.register('MMM-TautulliActivity', {
 			return `${String(minutes).padStart(2, 0)}:${String(seconds).padStart(2, 0)}`;
 		}
 	},
+
+	convertToMS: function(formattedTime) {
+		var splitTime = formattedTime.split(":");
+		splitTime = splitTime.map(x => x * 1000);
+		var milliseconds = splitTime.pop();
+	
+		splitTime.forEach(() => { 
+			splitTime = splitTime.map(x => x * 60);
+			milliseconds += splitTime.pop();
+		})
+	   
+		return milliseconds;
+	}
 });
