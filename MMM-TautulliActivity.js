@@ -5,7 +5,6 @@
  * @author Derek Nicol <1420397+derekn@users.noreply.github.com>
  * @license https://opensource.org/licenses/MIT
  */
-
 Module.register('MMM-TautulliActivity', {
 	defaults: {
 		host: '',
@@ -16,19 +15,18 @@ Module.register('MMM-TautulliActivity', {
 		stateIcons: {
 			'playing': 'far fa-play-circle',
 			'paused': 'far fa-pause-circle',
-			'buffering': 'far fa-sync-alt',
+			'buffering': 'fas fa-sync-alt',
 		},
 	},
 	activityData: null,
+	interval: null,
 	getStyles: function() {
 		return [
 			'MMM-TautulliActivity.css',
 		]
 	},
-
-	countProgress: function(wrapper){
-		var offset = wrapper.getElementsByClassName('offset');
-		
+	countProgress: function(){
+		var offset = document.getElementsByClassName('offset');
 		for (var i = 0; i < offset.length; i++) {
 			var activity = offset[i].closest('.activity-row');
 			var duration = this.convertToMS(activity.querySelector('.details > .wholeDuration').innerHTML);
@@ -36,15 +34,12 @@ Module.register('MMM-TautulliActivity', {
 
 			var shouldCount = duration - newOffset > 1500;
 
-			console.log(shouldCount);
-			console.log(activity);
 			if(activity.classList.contains("playing")){
 				var newOffset = this.convertToMS(offset[i].innerHTML);
 				offset[i].innerHTML =  shouldCount ? `${this.convertFromMS(+newOffset + 1000)}` : `-`;
 			}
 
 		}
-		console.log(newOffset);
 
 	},
 
@@ -55,6 +50,8 @@ Module.register('MMM-TautulliActivity', {
 		this.config.updateFrequency = this.config.updateFrequency;
 
 		this.sendSocketNotification('INIT', this.config);
+
+
 	},
 
 	getDom: function() {
@@ -63,16 +60,15 @@ Module.register('MMM-TautulliActivity', {
 
 		if (! this.activityData) {
 			wrapper.innerHTML = '<span class="loading dimmed">loading&hellip;</span>';
-			clearInterval(this.interval);
+			// clearInterval(this.interval);
 		} else if (typeof this.activityData === 'string') {
 			wrapper.innerHTML = `<span class="error">${this.activityData}</span>`;
-			clearInterval(this.interval);
+			// clearInterval(this.interval);
 		} else if (! this.activityData.sessions.length) {
 			if (this.config.hideOnNoActivity && ! this.hidden) {
 				this.hide();
 			}
 			wrapper.innerHTML = '<span class="no-activity dimmed">nothing is currently playing</span>';
-			clearInterval(this.interval);
 		} else {
 			for (const row of this.activityData.sessions) {
 				if(row.media_type == "movie"){
@@ -97,10 +93,7 @@ Module.register('MMM-TautulliActivity', {
 						</div>
 					</div>`;
 			}
-			clearInterval(this.interval);
-			
-			this.interval = setInterval(()=> { this.countProgress(wrapper) }, 1000);
-			setTimeout(function(){clearInterval(this.interval);}, 10000);
+
 			if (this.hidden) {
 				this.show()
 			}
@@ -114,6 +107,8 @@ Module.register('MMM-TautulliActivity', {
 		{
 			this.activityData = payload;
 			this.updateDom(this.config.animationSpeed);
+			clearInterval(this.interval);
+			this.interval = setInterval(()=> { this.countProgress() }, 1000);
 		}
 	},
 
